@@ -12,7 +12,7 @@ pub use crate::policy::{
     default_policy, Policy, RoleKind, RolePermission, VersionedPolicy, VotePolicy,
 };
 use crate::proposals::VersionedProposal;
-pub use crate::proposals::{Proposal, ProposalInput, ProposalKind, ProposalStatus};
+pub use crate::proposals::{Proposal, ProposalInput, ProposalKind, ProposalStatus, KeypomArgs};
 pub use crate::types::{Action, Config, OldAccountId, OLD_BASE_TOKEN};
 use crate::upgrade::{internal_get_factory_info, internal_set_factory_info, FactoryInfo};
 pub use crate::views::{BountyOutput, ProposalOutput};

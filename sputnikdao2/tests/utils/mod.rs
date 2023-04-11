@@ -10,7 +10,7 @@ use near_sdk::json_types::U128;
 use sputnik_staking::ContractContract as StakingContract;
 use sputnikdao2::{
     Action, Bounty, Config, ContractContract as DAOContract, OldAccountId, ProposalInput,
-    ProposalKind, VersionedPolicy, OLD_BASE_TOKEN,
+    ProposalKind, VersionedPolicy, OLD_BASE_TOKEN, KeypomArgs
 };
 use sputnikdao_factory2::SputnikDAOFactoryContract as FactoryContract;
 use test_token::ContractContract as TestTokenContract;
@@ -93,7 +93,7 @@ pub fn add_proposal(
     funder: Option<String>, 
     customId: Option<String>
 ) -> ExecutionResult {
-    call!(root, dao.add_proposal(proposal, None, None, None), deposit = to_yocto("1"))
+    call!(root, dao.add_proposal(proposal, keypom_args, funder, customId), deposit = to_yocto("1"))
 }
 
 pub fn add_member_proposal(
