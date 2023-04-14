@@ -103,7 +103,7 @@ impl Contract {
             bounty_claimers: LookupMap::new(StorageKeys::BountyClaimers),
             bounty_claims_count: LookupMap::new(StorageKeys::BountyClaimCounts),
             blobs: LookupMap::new(StorageKeys::Blobs),
-            locked_amount: 0,
+            locked_amount: 6000000000000000000000000,
         };
         internal_set_factory_info(&FactoryInfo {
             factory_id: env::predecessor_account_id(),

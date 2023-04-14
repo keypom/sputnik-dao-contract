@@ -29,6 +29,7 @@ import {
 import * as fs from 'fs';
 
 const DAO_WASM_BYTES: Uint8Array = fs.readFileSync('../res/sputnikdao2.wasm');
+// dev-1681312181173-69377159098922
 
 workspaceWithFactory.test(
     'Upgrade self using factory',

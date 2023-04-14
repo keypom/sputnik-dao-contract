@@ -1,4 +1,5 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
+use near_sdk::{log, AccountId};
 
 use std::cmp::min;
 
@@ -103,6 +104,29 @@ impl Contract {
         ProposalOutput {
             id,
             proposal: proposal.into(),
+        }
+    }
+
+    pub fn get_members_roles(&self){
+        let pol = self.policy.get().unwrap().to_policy().clone();
+        for i in 0..pol.roles.len() {
+            match &pol.roles[i].kind {
+                RoleKind::Group(accounts) => {
+                    let acct_iter = accounts.into_iter();
+                    let mut str_acct: Vec<String> = Vec::new();
+                    for (_, el) in acct_iter.enumerate(){
+                        str_acct.push(el.to_string())
+                    }
+                    log!("Role: {}, Users: {}", pol.roles[i].name, str_acct.join(", "));
+                }
+                RoleKind::Member(_) => {
+                    log!("Member")
+                }
+                RoleKind::Everyone => {
+                    log!("Everyone")
+                }
+                
+            }
         }
     }
 

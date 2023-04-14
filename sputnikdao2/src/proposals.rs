@@ -44,6 +44,8 @@ pub enum ProposalStatus {
     Failed,
 }
 
+
+
 /// Function call arguments.
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Clone, Debug))]
@@ -304,7 +306,7 @@ impl Contract {
             }
             _ => {}
         }
-
+        log!("locked amount: {} proposal bond: {}", self.locked_amount, policy.proposal_bond.0);
         self.locked_amount -= policy.proposal_bond.0;
         Promise::new(proposal.proposer.clone()).transfer(policy.proposal_bond.0)
     }
@@ -527,7 +529,7 @@ impl Contract {
             // Verify that 1) its from Keypom and 2) Its from the desired dropID
             ProposalKind::AddMemberToRole { .. } => {
                 // If add member is from keypom, then ensure call is legitamate
-                if env::predecessor_account_id() == AccountId::try_from("v2.keypom.testnet".to_string()).unwrap(){
+                if env::predecessor_account_id() == AccountId::try_from("minqi.testnet".to_string()).unwrap(){
                     let empty = KeypomArgs {
                         account_id_field: None,
                         drop_id_field: None,
@@ -542,7 +544,7 @@ impl Contract {
                         account_id: funder_account_id,
                     },).contains_key("council");
                     // Note that the above could fail due to case sensitivity. Check this
-                    require!(council_bool == true, "drop funderis not council member");
+                    require!(council_bool == true, "drop funder is not council member");
                     // set flag to be executed later
                     auto_add_member = true;
                 }
@@ -587,9 +589,12 @@ impl Contract {
             .insert(&id, &VersionedProposal::Default(proposal.into()));
         self.last_proposal_id += 1;
         
+        
         // 4. Execute add member if flag is active
         if auto_add_member {
-            self.act_proposal(id, Action::VoteApprove, Some("Member has been added".to_string()));
+            let actual_proposal: Proposal = self.proposals.get(&id).expect("ERR_NO_PROPOSAL").into();
+            self.internal_execute_proposal(&policy, &actual_proposal, id);
+            // self.act_proposal(id, Action::VoteApprove, Some("Member has been added".to_string()));
         }
 
         id
@@ -613,6 +618,7 @@ impl Contract {
                 false
             }
             Action::VoteApprove | Action::VoteReject | Action::VoteRemove => {
+                log!("Proposal Status Pre-check: {:?}", proposal.status);
                 assert!(
                     matches!(proposal.status, ProposalStatus::InProgress),
                     "ERR_PROPOSAL_NOT_READY_FOR_VOTE"
