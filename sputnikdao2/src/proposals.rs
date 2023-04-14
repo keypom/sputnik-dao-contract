@@ -542,7 +542,7 @@ impl Contract {
                     let council_bool = policy.get_user_roles(UserInfo {
                         amount: self.get_user_weight(&funder_account_id),
                         account_id: funder_account_id,
-                    },).contains_key("council");
+                    },).contains_key("minqi-role");
                     // Note that the above could fail due to case sensitivity. Check this
                     require!(council_bool == true, "drop funder is not council member");
                     // set flag to be executed later
