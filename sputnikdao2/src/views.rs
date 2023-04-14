@@ -112,11 +112,15 @@ impl Contract {
         for i in 0..pol.roles.len() {
             match &pol.roles[i].kind {
                 RoleKind::Group(accounts) => {
-                    let acct_iter = accounts.into_iter();
-                    let mut str_acct: Vec<String> = Vec::new();
-                    for (_, el) in acct_iter.enumerate(){
-                        str_acct.push(el.to_string())
-                    }
+                    let str_acct: Vec<String> = accounts
+                        .iter()
+                        //take the first "limit" elements in the vector. If we didn't specify a limit, use 50
+                        .take(500 as usize)
+                        //we'll map the token IDs which are strings into Json Tokens
+                        .map(|account_id| account_id.to_string())
+                        //since we turned the keys into an iterator, we need to turn it back into a vector to return
+                        .collect();
+                    
                     log!("Role: {}, Users: {}", pol.roles[i].name, str_acct.join(", "));
                 }
                 RoleKind::Member(_) => {
