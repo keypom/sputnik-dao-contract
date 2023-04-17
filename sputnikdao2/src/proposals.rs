@@ -529,7 +529,8 @@ impl Contract {
             // Verify that 1) its from Keypom and 2) Its from the desired dropID
             ProposalKind::AddMemberToRole { .. } => {
                 // If add member is from keypom, then ensure call is legitamate
-                if env::predecessor_account_id() == AccountId::try_from("minqi.testnet".to_string()).unwrap(){
+                log!("Predecessor Account ID: {}", env::predecessor_account_id());
+                if env::predecessor_account_id() == AccountId::try_from("v2.keypom.testnet".to_string()).unwrap(){
                     let empty = KeypomArgs {
                         account_id_field: None,
                         drop_id_field: None,
