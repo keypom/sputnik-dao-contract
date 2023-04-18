@@ -67,6 +67,8 @@ pub struct Contract {
     pub last_proposal_id: u64,
     /// Proposal map from ID to proposal information.
     pub proposals: LookupMap<u64, VersionedProposal>,
+    /// List of proposal IDs generated from Keypom, these are too large to paginate through normally and must be tracked
+    pub custom_proposal_ids: Vec<u64>,
 
     /// List of approved dropIds for multiple drops
     // pub approved_drop_ids: LazyOption<Vec<u128>>,
@@ -97,6 +99,7 @@ impl Contract {
             delegations: LookupMap::new(StorageKeys::Delegations),
             last_proposal_id: 0,
             proposals: LookupMap::new(StorageKeys::Proposals),
+            custom_proposal_ids: Vec::new(),
             // approved_drop_ids: LazyOption::new(StorageKeys::DropIds, Some(&drop_ids)),
             last_bounty_id: 0,
             bounties: LookupMap::new(StorageKeys::Bounties),

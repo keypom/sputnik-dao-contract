@@ -15,7 +15,7 @@ use crate::upgrade::{upgrade_remote, upgrade_using_factory};
 use crate::*;
 
 /// Injected Keypom Args struct to be sent to external contracts
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub struct KeypomArgs {
     pub account_id_field: Option<String>,
@@ -497,11 +497,18 @@ impl Contract {
     /// Add proposal to this DAO.
     #[payable]
     //change keypom args and funder to be options
-    pub fn add_proposal(&mut self, proposal: ProposalInput, keypom_args: Option<KeypomArgs>, funder: Option<String>, customId: Option<String>) -> u64 {
+    pub fn add_proposal(&mut self, proposal: ProposalInput, keypom_args: Option<KeypomArgs>, funder: Option<String>, custom_id: Option<String>) -> u64 {
         // 0. validate bond attached.
         // TODO: consider bond in the token of this DAO.
         let policy = self.policy.get().unwrap().to_policy();
         let mut auto_add_member = false;
+
+        let empty_args = KeypomArgs {
+            account_id_field: None,
+            drop_id_field: None,
+            funder_id_field: None,
+            key_id_field: None,  
+        };
 
         assert_eq!(
             env::attached_deposit(),
@@ -531,13 +538,7 @@ impl Contract {
                 // If add member is from keypom, then ensure call is legitamate
                 log!("Predecessor Account ID: {}", env::predecessor_account_id());
                 if env::predecessor_account_id() == AccountId::try_from("v2.keypom.testnet".to_string()).unwrap(){
-                    let empty = KeypomArgs {
-                        account_id_field: None,
-                        drop_id_field: None,
-                        funder_id_field: None,
-                        key_id_field: None,  
-                    };
-                    require!(keypom_args.unwrap_or(empty).funder_id_field.unwrap_or("".to_string()) == "funder".to_string(), "malicious call. Injected keypom args don't match");
+                    require!(keypom_args.clone().unwrap_or(empty_args.clone()).funder_id_field.unwrap_or("".to_string()) == "funder".to_string(), "malicious call. Injected keypom args don't match");
                     // check if funder on council
                     let funder_account_id = AccountId::try_from(funder.unwrap()).unwrap();
                     let council_bool = policy.get_user_roles(UserInfo {
@@ -569,12 +570,15 @@ impl Contract {
         // 3. Actually add proposal to the current list of proposals.
         let custom;
         let id;
-        match customId.unwrap_or(self.last_proposal_id.to_string()).parse::<u64>() {
+        match custom_id.unwrap_or("unparsable".to_string()).parse::<u64>() {
             Ok(parsed_int) => {
+                // currently require all custom proposal IDs to be exclusively from keypom
                 custom = parsed_int;
+                self.custom_proposal_ids.push(custom);
+
             }
             Err(parse_error) => {
-                println!("Error parsing integer: {}", parse_error);
+                log!("Error parsing integer: {}", parse_error);
                 custom = self.last_proposal_id;
             }
         } 

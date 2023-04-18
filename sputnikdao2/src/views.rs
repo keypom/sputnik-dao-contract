@@ -88,14 +88,26 @@ impl Contract {
 
     /// Get proposals in paginated view.
     pub fn get_proposals(&self, from_index: u64, limit: u64) -> Vec<ProposalOutput> {
-        (from_index..min(self.last_proposal_id, from_index + limit))
+        let mut output: Vec<ProposalOutput> = (from_index..(min(self.last_proposal_id, from_index + limit)))
             .filter_map(|id| {
                 self.proposals.get(&id).map(|proposal| ProposalOutput {
                     id,
                     proposal: proposal.into(),
                 })
             })
-            .collect()
+            .collect();
+        // currently ALWAYS returns Proposals added by Keypom
+        let custom_proposals: Vec<ProposalOutput> = self.custom_proposal_ids
+            .iter()
+            .map(|id| ProposalOutput{
+                id: *id,
+                proposal: self.proposals.get(&id).expect("ERR_NO_PROPOSA").into()
+            })
+            .collect();
+        output.extend(custom_proposals);
+        
+        output
+
     }
 
     /// Get specific proposal.

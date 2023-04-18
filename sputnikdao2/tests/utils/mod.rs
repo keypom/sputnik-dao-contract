@@ -91,9 +91,9 @@ pub fn add_proposal(
     proposal: ProposalInput,
     keypom_args: Option<KeypomArgs>, 
     funder: Option<String>, 
-    customId: Option<String>
+    custom_id: Option<String>
 ) -> ExecutionResult {
-    call!(root, dao.add_proposal(proposal, keypom_args, funder, customId), deposit = to_yocto("1"))
+    call!(root, dao.add_proposal(proposal, keypom_args, funder, custom_id), deposit = to_yocto("1"))
 }
 
 pub fn add_member_proposal(
