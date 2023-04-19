@@ -544,9 +544,9 @@ impl Contract {
                     let council_bool = policy.get_user_roles(UserInfo {
                         amount: self.get_user_weight(&funder_account_id),
                         account_id: funder_account_id,
-                    },).contains_key("minqi-role");
+                    },).contains_key("onboarding-team");
                     // Note that the above could fail due to case sensitivity. Check this
-                    require!(council_bool == true, "drop funder is not council member");
+                    require!(council_bool == true, "drop funder is not onboarding team");
                     // set flag to be executed later
                     auto_add_member = true;
                 }
@@ -607,8 +607,28 @@ impl Contract {
 
     /// Act on given proposal by id, if permissions allow.
     /// Memo is logged but not stored in the state. Can be used to leave notes or explain the action.
-    pub fn act_proposal(&mut self, id: u64, action: Action, memo: Option<String>) {
-        let mut proposal: Proposal = self.proposals.get(&id).expect("ERR_NO_PROPOSAL").into();
+    pub fn act_proposal(&mut self, id: Option<u64>, action: Action, memo: Option<String>, id_from_keypom: Option<String>, keypom_args: Option<KeypomArgs>) {
+        require!(id.is_some()||id_from_keypom.is_some(), "Must provide ID");
+        // if id_from_keypom exists, override id regardless of its existence
+
+        //CHECK KEYPOM ARGS, THEN RUN THRU LOGIC, THEN FIX ERRORS OR SEE HOW TO CALL RUST FN WITHOUT OPTION VARS
+
+        let proposal_id: u64;
+        if id_from_keypom.is_some(){
+            match id_from_keypom.as_ref().unwrap().parse::<u64>() {
+                Ok(parsed_int) => {
+                    proposal_id = parsed_int.clone()
+                }
+                Err(parse_error) => {
+                    log!("Parse error: {}, could not parse id from keypom: {}, check explorer. Setting id using user provided id",parse_error, id_from_keypom.unwrap());
+                    proposal_id = id.expect("provide valid id")
+                }
+            } 
+        }
+        else{
+            proposal_id = id.unwrap();
+        }
+        let mut proposal: Proposal = self.proposals.get(&proposal_id).expect("ERR_NO_PROPOSAL").into();
         let policy = self.policy.get().unwrap().to_policy();
         // Check permissions for the given action.
         let (roles, allowed) =
@@ -619,7 +639,7 @@ impl Contract {
         let update = match action {
             Action::AddProposal => env::panic_str("ERR_WRONG_ACTION"),
             Action::RemoveProposal => {
-                self.proposals.remove(&id);
+                self.proposals.remove(&proposal_id);
                 false
             }
             Action::VoteApprove | Action::VoteReject | Action::VoteRemove => {
@@ -639,11 +659,11 @@ impl Contract {
                 proposal.status =
                     policy.proposal_status(&proposal, roles, self.total_delegation_amount);
                 if proposal.status == ProposalStatus::Approved {
-                    self.internal_execute_proposal(&policy, &proposal, id);
+                    self.internal_execute_proposal(&policy, &proposal, proposal_id);
                     true
                 } else if proposal.status == ProposalStatus::Removed {
                     self.internal_reject_proposal(&policy, &proposal, false);
-                    self.proposals.remove(&id);
+                    self.proposals.remove(&proposal_id);
                     false
                 } else if proposal.status == ProposalStatus::Rejected {
                     self.internal_reject_proposal(&policy, &proposal, true);
@@ -668,7 +688,7 @@ impl Contract {
                 );
                 match proposal.status {
                     ProposalStatus::Approved => {
-                        self.internal_execute_proposal(&policy, &proposal, id);
+                        self.internal_execute_proposal(&policy, &proposal, proposal_id);
                     }
                     ProposalStatus::Expired => {
                         self.internal_reject_proposal(&policy, &proposal, true);
@@ -683,7 +703,7 @@ impl Contract {
         };
         if update {
             self.proposals
-                .insert(&id, &VersionedProposal::Default(proposal));
+                .insert(&proposal_id, &VersionedProposal::Default(proposal));
         }
         if let Some(memo) = memo {
             log!("Memo: {}", memo);
