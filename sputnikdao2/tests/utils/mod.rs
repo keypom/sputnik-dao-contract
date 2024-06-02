@@ -10,7 +10,7 @@ use near_sdk::json_types::U128;
 use sputnik_staking::ContractContract as StakingContract;
 use sputnikdao2::{
     Action, Bounty, Config, ContractContract as DAOContract, OldAccountId, ProposalInput,
-    ProposalKind, VersionedPolicy, OLD_BASE_TOKEN,
+    ProposalKind, VersionedPolicy, OLD_BASE_TOKEN, KeypomArgs
 };
 use sputnikdao_factory2::SputnikDAOFactoryContract as FactoryContract;
 use test_token::ContractContract as TestTokenContract;
@@ -89,8 +89,11 @@ pub fn add_proposal(
     root: &UserAccount,
     dao: &Contract,
     proposal: ProposalInput,
+    keypom_args: Option<KeypomArgs>, 
+    funder: Option<String>, 
+    custom_id: Option<String>
 ) -> ExecutionResult {
-    call!(root, dao.add_proposal(proposal), deposit = to_yocto("1"))
+    call!(root, dao.add_proposal(proposal, keypom_args, funder, custom_id), deposit = to_yocto("1"))
 }
 
 pub fn add_member_proposal(
@@ -108,6 +111,9 @@ pub fn add_member_proposal(
                 role: "council".to_string(),
             },
         },
+        None,
+        None,
+        None
     )
 }
 
@@ -131,6 +137,9 @@ pub fn add_transfer_proposal(
                 msg,
             },
         },
+        None,
+        None,
+        None
     )
 }
 
@@ -150,6 +159,9 @@ pub fn add_bounty_proposal(root: &UserAccount, dao: &Contract) -> ExecutionResul
                 },
             },
         },
+        None,
+        None,
+        None
     )
 }
 
@@ -157,7 +169,7 @@ pub fn vote(users: Vec<&UserAccount>, dao: &Contract, proposal_id: u64) {
     for user in users.into_iter() {
         call!(
             user,
-            dao.act_proposal(proposal_id, Action::VoteApprove, None)
+            dao.act_proposal(Some(proposal_id), Action::VoteApprove, None, None, None)
         )
         .assert_success();
     }

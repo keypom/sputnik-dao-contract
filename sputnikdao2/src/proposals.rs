@@ -1,9 +1,10 @@
 use std::collections::HashMap;
+use std::convert::TryFrom;
 
 use near_contract_standards::fungible_token::core_impl::ext_fungible_token;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::json_types::{Base64VecU8, U128, U64};
-use near_sdk::{log, AccountId, Balance, Gas, PromiseOrValue};
+use near_sdk::{log, AccountId, Balance, Gas, PromiseOrValue, require};
 
 use crate::policy::UserInfo;
 use crate::types::{
@@ -12,6 +13,16 @@ use crate::types::{
 };
 use crate::upgrade::{upgrade_remote, upgrade_using_factory};
 use crate::*;
+
+/// Injected Keypom Args struct to be sent to external contracts
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(crate = "near_sdk::serde")]
+pub struct KeypomArgs {
+    pub account_id_field: Option<String>,
+    pub drop_id_field: Option<String>,
+    pub key_id_field: Option<String>,
+    pub funder_id_field: Option<String>
+}
 
 /// Status of a proposal.
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, PartialEq, Debug)]
@@ -32,6 +43,8 @@ pub enum ProposalStatus {
     /// If proposal has failed when finalizing. Allowed to re-finalize again to either expire or approved.
     Failed,
 }
+
+
 
 /// Function call arguments.
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
@@ -293,7 +306,7 @@ impl Contract {
             }
             _ => {}
         }
-
+        log!("locked amount: {} proposal bond: {}", self.locked_amount, policy.proposal_bond.0);
         self.locked_amount -= policy.proposal_bond.0;
         Promise::new(proposal.proposer.clone()).transfer(policy.proposal_bond.0)
     }
@@ -483,10 +496,19 @@ impl Contract {
 impl Contract {
     /// Add proposal to this DAO.
     #[payable]
-    pub fn add_proposal(&mut self, proposal: ProposalInput) -> u64 {
+    //change keypom args and funder to be options
+    pub fn add_proposal(&mut self, proposal: ProposalInput, keypom_args: Option<KeypomArgs>, funder: Option<String>, custom_id: Option<String>) -> u64 {
         // 0. validate bond attached.
         // TODO: consider bond in the token of this DAO.
         let policy = self.policy.get().unwrap().to_policy();
+        let mut auto_add_member = false;
+
+        let empty_args = KeypomArgs {
+            account_id_field: None,
+            drop_id_field: None,
+            funder_id_field: None,
+            key_id_field: None,  
+        };
 
         assert_eq!(
             env::attached_deposit(),
@@ -495,6 +517,7 @@ impl Contract {
         );
 
         // 1. Validate proposal.
+        // Indicate flag if Keypom add member
         match &proposal.kind {
             ProposalKind::ChangePolicy { policy } => match policy {
                 VersionedPolicy::Current(_) => {}
@@ -510,6 +533,24 @@ impl Contract {
                 self.staking_id.is_none(),
                 "ERR_STAKING_CONTRACT_CANT_CHANGE"
             ),
+            // Verify that 1) its from Keypom and 2) Its from the desired dropID
+            ProposalKind::AddMemberToRole { .. } => {
+                // If add member is from keypom, then ensure call is legitamate
+                log!("Predecessor Account ID: {}", env::predecessor_account_id());
+                if env::predecessor_account_id() == AccountId::try_from("v2.keypom.testnet".to_string()).unwrap(){
+                    require!(keypom_args.clone().unwrap_or(empty_args.clone()).funder_id_field.unwrap_or("".to_string()) == "funder".to_string(), "malicious call. Injected keypom args don't match");
+                    // check if funder on council
+                    let funder_account_id = AccountId::try_from(funder.unwrap()).unwrap();
+                    let council_bool = policy.get_user_roles(UserInfo {
+                        amount: self.get_user_weight(&funder_account_id),
+                        account_id: funder_account_id,
+                    },).contains_key("onboarding-team");
+                    // Note that the above could fail due to case sensitivity. Check this
+                    require!(council_bool == true, "drop funder is not onboarding team");
+                    // set flag to be executed later
+                    auto_add_member = true;
+                }
+            }
             // TODO: add more verifications.
             _ => {}
         };
@@ -527,18 +568,67 @@ impl Contract {
         );
 
         // 3. Actually add proposal to the current list of proposals.
-        let id = self.last_proposal_id;
+        let custom;
+        let id;
+        match custom_id.unwrap_or("unparsable".to_string()).parse::<u64>() {
+            Ok(parsed_int) => {
+                // currently require all custom proposal IDs to be exclusively from keypom
+                custom = parsed_int;
+                self.custom_proposal_ids.push(custom);
+
+            }
+            Err(parse_error) => {
+                log!("Error parsing integer: {}", parse_error);
+                custom = self.last_proposal_id;
+            }
+        } 
+        let no_duplicate_ids = self.proposals.contains_key(&custom);
+        if !no_duplicate_ids{
+            id = custom;
+        }
+        else{
+            id = self.last_proposal_id;
+        }
+
         self.proposals
             .insert(&id, &VersionedProposal::Default(proposal.into()));
         self.last_proposal_id += 1;
-        self.locked_amount += env::attached_deposit();
+        
+        
+        // 4. Execute add member if flag is active
+        if auto_add_member {
+            let actual_proposal: Proposal = self.proposals.get(&id).expect("ERR_NO_PROPOSAL").into();
+            self.internal_execute_proposal(&policy, &actual_proposal, id);
+            // self.act_proposal(id, Action::VoteApprove, Some("Member has been added".to_string()));
+        }
+
         id
     }
 
     /// Act on given proposal by id, if permissions allow.
     /// Memo is logged but not stored in the state. Can be used to leave notes or explain the action.
-    pub fn act_proposal(&mut self, id: u64, action: Action, memo: Option<String>) {
-        let mut proposal: Proposal = self.proposals.get(&id).expect("ERR_NO_PROPOSAL").into();
+    pub fn act_proposal(&mut self, id: Option<u64>, action: Action, memo: Option<String>, id_from_keypom: Option<String>, keypom_args: Option<KeypomArgs>) {
+        require!(id.is_some()||id_from_keypom.is_some(), "Must provide ID");
+        // if id_from_keypom exists, override id regardless of its existence
+
+        //CHECK KEYPOM ARGS, THEN RUN THRU LOGIC, THEN FIX ERRORS OR SEE HOW TO CALL RUST FN WITHOUT OPTION VARS
+
+        let proposal_id: u64;
+        if id_from_keypom.is_some(){
+            match id_from_keypom.as_ref().unwrap().parse::<u64>() {
+                Ok(parsed_int) => {
+                    proposal_id = parsed_int.clone()
+                }
+                Err(parse_error) => {
+                    log!("Parse error: {}, could not parse id from keypom: {}, check explorer. Setting id using user provided id",parse_error, id_from_keypom.unwrap());
+                    proposal_id = id.expect("provide valid id")
+                }
+            } 
+        }
+        else{
+            proposal_id = id.unwrap();
+        }
+        let mut proposal: Proposal = self.proposals.get(&proposal_id).expect("ERR_NO_PROPOSAL").into();
         let policy = self.policy.get().unwrap().to_policy();
         // Check permissions for the given action.
         let (roles, allowed) =
@@ -549,10 +639,11 @@ impl Contract {
         let update = match action {
             Action::AddProposal => env::panic_str("ERR_WRONG_ACTION"),
             Action::RemoveProposal => {
-                self.proposals.remove(&id);
+                self.proposals.remove(&proposal_id);
                 false
             }
             Action::VoteApprove | Action::VoteReject | Action::VoteRemove => {
+                log!("Proposal Status Pre-check: {:?}", proposal.status);
                 assert!(
                     matches!(proposal.status, ProposalStatus::InProgress),
                     "ERR_PROPOSAL_NOT_READY_FOR_VOTE"
@@ -568,11 +659,11 @@ impl Contract {
                 proposal.status =
                     policy.proposal_status(&proposal, roles, self.total_delegation_amount);
                 if proposal.status == ProposalStatus::Approved {
-                    self.internal_execute_proposal(&policy, &proposal, id);
+                    self.internal_execute_proposal(&policy, &proposal, proposal_id);
                     true
                 } else if proposal.status == ProposalStatus::Removed {
                     self.internal_reject_proposal(&policy, &proposal, false);
-                    self.proposals.remove(&id);
+                    self.proposals.remove(&proposal_id);
                     false
                 } else if proposal.status == ProposalStatus::Rejected {
                     self.internal_reject_proposal(&policy, &proposal, true);
@@ -597,7 +688,7 @@ impl Contract {
                 );
                 match proposal.status {
                     ProposalStatus::Approved => {
-                        self.internal_execute_proposal(&policy, &proposal, id);
+                        self.internal_execute_proposal(&policy, &proposal, proposal_id);
                     }
                     ProposalStatus::Expired => {
                         self.internal_reject_proposal(&policy, &proposal, true);
@@ -612,7 +703,7 @@ impl Contract {
         };
         if update {
             self.proposals
-                .insert(&id, &VersionedProposal::Default(proposal));
+                .insert(&proposal_id, &VersionedProposal::Default(proposal));
         }
         if let Some(memo) = memo {
             log!("Memo: {}", memo);

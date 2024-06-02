@@ -1,4 +1,5 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
+use near_sdk::{log, AccountId};
 
 use std::cmp::min;
 
@@ -87,14 +88,26 @@ impl Contract {
 
     /// Get proposals in paginated view.
     pub fn get_proposals(&self, from_index: u64, limit: u64) -> Vec<ProposalOutput> {
-        (from_index..min(self.last_proposal_id, from_index + limit))
+        let mut output: Vec<ProposalOutput> = (from_index..(min(self.last_proposal_id, from_index + limit)))
             .filter_map(|id| {
                 self.proposals.get(&id).map(|proposal| ProposalOutput {
                     id,
                     proposal: proposal.into(),
                 })
             })
-            .collect()
+            .collect();
+        // currently ALWAYS returns Proposals added by Keypom
+        let custom_proposals: Vec<ProposalOutput> = self.custom_proposal_ids
+            .iter()
+            .map(|id| ProposalOutput{
+                id: *id,
+                proposal: self.proposals.get(&id).expect("ERR_NO_PROPOSA").into()
+            })
+            .collect();
+        output.extend(custom_proposals);
+        
+        output
+
     }
 
     /// Get specific proposal.
@@ -103,6 +116,33 @@ impl Contract {
         ProposalOutput {
             id,
             proposal: proposal.into(),
+        }
+    }
+
+    pub fn get_members_roles(&self){
+        let pol = self.policy.get().unwrap().to_policy().clone();
+        for i in 0..pol.roles.len() {
+            match &pol.roles[i].kind {
+                RoleKind::Group(accounts) => {
+                    let str_acct: Vec<String> = accounts
+                        .iter()
+                        //take the first "limit" elements in the vector. If we didn't specify a limit, use 50
+                        .take(500 as usize)
+                        //we'll map the token IDs which are strings into Json Tokens
+                        .map(|account_id| account_id.to_string())
+                        //since we turned the keys into an iterator, we need to turn it back into a vector to return
+                        .collect();
+                    
+                    log!("Role: {}, Users: {}", pol.roles[i].name, str_acct.join(", "));
+                }
+                RoleKind::Member(_) => {
+                    log!("Member")
+                }
+                RoleKind::Everyone => {
+                    log!("Everyone")
+                }
+                
+            }
         }
     }
 

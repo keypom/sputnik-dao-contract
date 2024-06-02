@@ -12,7 +12,7 @@ pub use crate::policy::{
     default_policy, Policy, RoleKind, RolePermission, VersionedPolicy, VotePolicy,
 };
 use crate::proposals::VersionedProposal;
-pub use crate::proposals::{Proposal, ProposalInput, ProposalKind, ProposalStatus};
+pub use crate::proposals::{Proposal, ProposalInput, ProposalKind, ProposalStatus, KeypomArgs};
 pub use crate::types::{Action, Config, OldAccountId, OLD_BASE_TOKEN};
 use crate::upgrade::{internal_get_factory_info, internal_set_factory_info, FactoryInfo};
 pub use crate::views::{BountyOutput, ProposalOutput};
@@ -35,6 +35,7 @@ pub enum StorageKeys {
     BountyClaimers,
     BountyClaimCounts,
     Blobs,
+    DropIds,
 }
 
 /// After payouts, allows a callback
@@ -66,6 +67,11 @@ pub struct Contract {
     pub last_proposal_id: u64,
     /// Proposal map from ID to proposal information.
     pub proposals: LookupMap<u64, VersionedProposal>,
+    /// List of proposal IDs generated from Keypom, these are too large to paginate through normally and must be tracked
+    pub custom_proposal_ids: Vec<u64>,
+
+    /// List of approved dropIds for multiple drops
+    // pub approved_drop_ids: LazyOption<Vec<u128>>,
 
     /// Last available id for the bounty.
     pub last_bounty_id: u64,
@@ -84,6 +90,7 @@ pub struct Contract {
 impl Contract {
     #[init]
     pub fn new(config: Config, policy: VersionedPolicy) -> Self {
+        //drop_ids: Vec<u128>
         let this = Self {
             config: LazyOption::new(StorageKeys::Config, Some(&config)),
             policy: LazyOption::new(StorageKeys::Policy, Some(&policy.upgrade())),
@@ -92,12 +99,14 @@ impl Contract {
             delegations: LookupMap::new(StorageKeys::Delegations),
             last_proposal_id: 0,
             proposals: LookupMap::new(StorageKeys::Proposals),
+            custom_proposal_ids: Vec::new(),
+            // approved_drop_ids: LazyOption::new(StorageKeys::DropIds, Some(&drop_ids)),
             last_bounty_id: 0,
             bounties: LookupMap::new(StorageKeys::Bounties),
             bounty_claimers: LookupMap::new(StorageKeys::BountyClaimers),
             bounty_claims_count: LookupMap::new(StorageKeys::BountyClaimCounts),
             blobs: LookupMap::new(StorageKeys::Blobs),
-            locked_amount: 0,
+            locked_amount: 6000000000000000000000000,
         };
         internal_set_factory_info(&FactoryInfo {
             factory_id: env::predecessor_account_id(),
@@ -184,14 +193,18 @@ mod tests {
     fn create_proposal(context: &mut VMContextBuilder, contract: &mut Contract) -> u64 {
         testing_env!(context.attached_deposit(to_yocto("1")).build());
         contract.add_proposal(ProposalInput {
-            description: "test".to_string(),
-            kind: ProposalKind::Transfer {
-                token_id: String::from(OLD_BASE_TOKEN),
-                receiver_id: accounts(2).into(),
-                amount: U128(to_yocto("100")),
-                msg: None,
+                description: "test".to_string(),
+                kind: ProposalKind::Transfer {
+                    token_id: String::from(OLD_BASE_TOKEN),
+                    receiver_id: accounts(2).into(),
+                    amount: U128(to_yocto("100")),
+                    msg: None,
+                },
             },
-        })
+            None,
+            None,
+            None
+        )
     }
 
     #[test]
@@ -230,12 +243,16 @@ mod tests {
             .attached_deposit(to_yocto("1"))
             .build());
         let _id = contract.add_proposal(ProposalInput {
-            description: "test".to_string(),
-            kind: ProposalKind::AddMemberToRole {
-                member_id: accounts(2).into(),
-                role: "council".to_string(),
-            },
-        });
+                description: "test".to_string(),
+                kind: ProposalKind::AddMemberToRole {
+                    member_id: accounts(2).into(),
+                    role: "council".to_string(),
+                },
+            }, 
+            None,
+            None,
+            None
+        );
     }
 
     #[test]
@@ -306,12 +323,16 @@ mod tests {
         );
         testing_env!(context.attached_deposit(to_yocto("1")).build());
         let id = contract.add_proposal(ProposalInput {
-            description: "test".to_string(),
-            kind: ProposalKind::AddMemberToRole {
-                member_id: accounts(2).into(),
-                role: "missing".to_string(),
+                description: "test".to_string(),
+                kind: ProposalKind::AddMemberToRole {
+                    member_id: accounts(2).into(),
+                    role: "missing".to_string(),
+                },
             },
-        });
+            None,
+            None,
+            None
+        );
         contract.act_proposal(id, Action::VoteApprove, None);
         let x = contract.get_policy();
         // still 2 roles: all and council.
@@ -329,10 +350,14 @@ mod tests {
         );
         testing_env!(context.attached_deposit(to_yocto("1")).build());
         let _id = contract.add_proposal(ProposalInput {
-            description: "test".to_string(),
-            kind: ProposalKind::ChangePolicy {
-                policy: VersionedPolicy::Default(vec![]),
+                description: "test".to_string(),
+                kind: ProposalKind::ChangePolicy {
+                    policy: VersionedPolicy::Default(vec![]),
+                },
             },
-        });
+            None,
+            None,
+            None
+        );
     }
 }
